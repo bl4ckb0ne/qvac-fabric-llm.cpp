@@ -35,11 +35,41 @@ layout (push_constant) uniform parameter
     uint broadcast2;
     uint broadcast3;
 #endif
+
+#if defined(USE_DEVICE_ADDR)
+    A data_a_ptr;
+#if defined(A_TYPE_PACKED16)
+    A_PACKED16 data_a_packed16_ptr;
+#endif
+    B data_b_ptr;
+    D data_d_ptr;
+    Fuse0 data_fuse0_ptr;
+    Fuse1 data_fuse1_ptr;
+#ifdef MUL_MAT_ID
+    IDS data_ids_ptr;
+#endif
+#endif
+
 } p;
+
+#if defined(USE_DEVICE_ADDR)
+#define data_a p.data_a_ptr.data_a
+#if defined(A_TYPE_PACKED16)
+#define data_a_packed16 p.data_a_packed16_ptr.data_a_packed16
+#endif
+#define data_b p.data_b_ptr.data_b
+#define data_d p.data_d_ptr.data_d
+#define data_fuse0 p.data_fuse0_ptr.data_fuse0
+#define data_fuse1 p.data_fuse1_ptr.data_fuse1
+#ifdef MUL_MAT_ID
+#define data_ids p.data_ids_ptr.data_ids
+#endif
+#endif
 
 #ifdef MUL_MAT_ID
 uint expert_id;
 #endif
+
 
 void get_offsets(out uint a_offset, out uint b_offset, out uint d_offset) {
 #ifdef MUL_MAT_ID

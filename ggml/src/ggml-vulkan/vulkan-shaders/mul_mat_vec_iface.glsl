@@ -5,6 +5,27 @@
 #define MAT_VEC_FUSION_FLAGS_SCALE0 0x4
 #define MAT_VEC_FUSION_FLAGS_SCALE1 0x8
 
+// Filter for mul_mat_vec_q4_0_q8_1_f32
+#if defined(DATA_A_Q4_0) && defined(ACC_TYPE)
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_buffer_reference2 : require
+#define USE_DEVICE_ADDR 1
+
+layout (buffer_reference, std430) readonly buffer A {A_TYPE data_a[];};
+#if defined(A_TYPE_PACKED16)
+layout (buffer_reference, std430) readonly buffer A_PACKED16 {A_TYPE_PACKED16 data_a_packed16[];};
+#endif
+layout (buffer_reference, std430) readonly buffer B {B_TYPE data_b[];};
+layout (buffer_reference, std430) writeonly buffer D {D_TYPE data_d[];};
+layout (buffer_reference, std430) readonly buffer Fuse0 {D_TYPE data_fuse0[];};
+layout (buffer_reference, std430) readonly buffer Fuse1 {D_TYPE data_fuse1[];};
+
+#ifdef MUL_MAT_ID
+layout (buffer_reference, std430) readonly buffer IDS {int data_ids[];};
+#endif
+
+#else
+
 layout (binding = 0) readonly buffer A {A_TYPE data_a[];};
 #if defined(A_TYPE_VEC4)
 layout (binding = 0) readonly buffer AV4 {A_TYPE_VEC4 data_a_v4[];};
@@ -33,3 +54,4 @@ layout (binding = 4) readonly buffer Fuse1 {D_TYPE data_fuse1[];};
 layout (binding = 5) readonly buffer IDS {int data_ids[];};
 #endif
 
+#endif
