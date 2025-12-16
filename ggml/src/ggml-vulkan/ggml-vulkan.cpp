@@ -935,7 +935,8 @@ struct vk_mat_vec_push_constants_addr {
     uint32_t ncols; uint32_t stride_a; uint32_t stride_b; uint32_t stride_d;
     uint32_t batch_stride_a; uint32_t batch_stride_b; uint32_t batch_stride_d;
     uint32_t ne02; uint32_t ne12; uint32_t broadcast2; uint32_t broadcast3;
-    uint64_t buffer_a_ptr; uint64_t buffer_b_ptr; uint64_t buffer_d_ptr;
+    uint64_t buffer_a_ptr; uint64_t buffer_b_ptr; uint64_t buffer_b_v2_ptr;
+    uint64_t buffer_b_v4_ptr; uint64_t buffer_d_ptr;
 };
 
 struct vk_quantize_q8_1_push_constants {
@@ -2134,7 +2135,10 @@ static void ggml_vk_create_pipeline_func(vk_device& device, vk_pipeline& pipelin
         pipeline->push_constant_size
     );
 
-    if (pipeline->name == "mul_mat_vec_q4_0_q8_1_f32" || pipeline->name == "quantize_q8_1_x4") {
+    std::cout << __FUNCTION__ << " pipeline " << pipeline->name << '\n';
+
+    if (pipeline->name == "mul_mat_vec_q4_0_q8_1_f32" || pipeline->name == "quantize_q8_1_x4" || pipeline->name == "mul_mat_vec_q4_0_f32_f32") {
+        std::cout << "empty layout \n";
         vk::DescriptorSetLayout empty_layout =
                 device->device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo().setBindingCount(0));
         vk::PipelineLayoutCreateInfo pipeline_layout_create_info(vk::PipelineLayoutCreateFlags(), empty_layout, pcr);
@@ -3695,7 +3699,7 @@ static void ggml_vk_load_shaders(vk_device& device) {
             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_F32 ][i], "mul_mat_vec_f32_f32_f32",  arr_dmmv_f32_f32_f32_len[reduc],  arr_dmmv_f32_f32_f32_data[reduc],  "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2, 1, 1}, {wg_size_subgroup, 2, i+1}, 1, false, use_subgroups, force_subgroup_size);
             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_F16 ][i], "mul_mat_vec_f16_f32_f32",  arr_dmmv_f16_f32_f32_len[reduc],  arr_dmmv_f16_f32_f32_data[reduc],  "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2, 1, 1}, {wg_size_subgroup, 2, i+1}, 1, false, use_subgroups, force_subgroup_size);
             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_BF16][i], "mul_mat_vec_bf16_f32_f32", arr_dmmv_bf16_f32_f32_len[reduc], arr_dmmv_bf16_f32_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2, 1, 1}, {wg_size_subgroup, 2, i+1}, 1, false, use_subgroups, force_subgroup_size);
-            ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_Q4_0][i], "mul_mat_vec_q4_0_f32_f32", arr_dmmv_q4_0_f32_f32_len[reduc], arr_dmmv_q4_0_f32_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
+            ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_Q4_0][i], "mul_mat_vec_q4_0_f32_f32", arr_dmmv_q4_0_f32_f32_len[reduc], arr_dmmv_q4_0_f32_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants_addr), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_Q4_1][i], "mul_mat_vec_q4_1_f32_f32", arr_dmmv_q4_1_f32_f32_len[reduc], arr_dmmv_q4_1_f32_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_Q5_0][i], "mul_mat_vec_q5_0_f32_f32", arr_dmmv_q5_0_f32_f32_len[reduc], arr_dmmv_q5_0_f32_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_Q5_1][i], "mul_mat_vec_q5_1_f32_f32", arr_dmmv_q5_1_f32_f32_len[reduc], arr_dmmv_q5_1_f32_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
@@ -6017,14 +6021,21 @@ static void ggml_vk_dispatch_pipeline(ggml_backend_vk_context* ctx, vk_context& 
 
     vk::DescriptorSet& descriptor_set = ctx->descriptor_sets[ctx->descriptor_set_idx++];
 
-    if (pipeline->name != "mul_mat_vec_q4_0_q8_1_f32" && pipeline->name != "quantize_q8_1_x4") {
+    if (pipeline->name == "mul_mat_vec_q4_0_f32_f32") {
+        std::cout << __FUNCTION__ << " mul_mat_vec_q4_0_f32_f32\n";
+        abort();
+    }
+
+    if (pipeline->name != "mul_mat_vec_q4_0_q8_1_f32" && pipeline->name != "quantize_q8_1_x4" && pipeline->name != "mul_mat_vec_q4_0_f32_f32") {
         vk::WriteDescriptorSet write_descriptor_set{ descriptor_set, 0, 0, pipeline->parameter_count, vk::DescriptorType::eStorageBuffer, nullptr, descriptor_buffer_infos.begin() };
         ctx->device->device.updateDescriptorSets({ write_descriptor_set }, {});
+    } else {
+        std::cout << pipeline->name << " bindless\n";
     }
     subctx->s->buffer.pushConstants(pipeline->layout, vk::ShaderStageFlagBits::eCompute, 0, push_constant_size(push_constants), push_constant_data(push_constants));
     subctx->s->buffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline->pipeline);
 
-    if (pipeline->name != "mul_mat_vec_q4_0_q8_1_f32" && pipeline->name != "quantize_q8_1_x4") {
+    if (pipeline->name != "mul_mat_vec_q4_0_q8_1_f32" && pipeline->name != "quantize_q8_1_x4" && pipeline->name != "mul_mat_vec_q4_0_f32_f32") {
         subctx->s->buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
                                     pipeline->layout,
                                     0,
@@ -7164,7 +7175,7 @@ static bool ggml_vk_should_use_mmvq(const vk_device& device, uint32_t m, uint32_
         // From tests on A770 Linux, may need more tuning
         case GGML_TYPE_Q4_0:
         case GGML_TYPE_Q5_1:
-            return false;
+            //return false;
         default:
             return true;
         }
@@ -7386,7 +7397,8 @@ static void ggml_vk_mul_mat_vec_q_f16(ggml_backend_vk_context * ctx, vk_context&
                 (uint32_t)ne02, (uint32_t)ne12, (uint32_t)r2, (uint32_t)r3,
                 static_cast<uint64_t>(d_X.buffer->bda_addr),
                 static_cast<uint64_t>(d_Y.buffer->bda_addr),
-                static_cast<uint64_t>(d_D.buffer->bda_addr)
+                static_cast<uint64_t>(d_D.buffer->bda_addr),
+                0, 0,
         };
         ggml_vk_dispatch_pipeline(ctx, subctx, dmmv,
                               {
@@ -7398,7 +7410,6 @@ static void ggml_vk_mul_mat_vec_q_f16(ggml_backend_vk_context * ctx, vk_context&
                               },
                                   pc, { groups_x, (uint32_t)(ne12 * ne13), groups_z });
     } else {
-
     // compute
     const vk_mat_vec_push_constants pc = {
         (uint32_t)ne00, (uint32_t)ne10, (uint32_t)ne10, (uint32_t)ne01,

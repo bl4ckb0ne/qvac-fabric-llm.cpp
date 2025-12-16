@@ -5,17 +5,21 @@
 #define MAT_VEC_FUSION_FLAGS_SCALE0 0x4
 #define MAT_VEC_FUSION_FLAGS_SCALE1 0x8
 
-// Filter for mul_mat_vec_q4_0_q8_1_f32
-#if defined(DATA_A_Q4_0) && defined(ACC_TYPE)
+#if defined(USE_DEVICE_ADDR)
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_buffer_reference2 : require
-#define USE_DEVICE_ADDR 1
 
 layout (buffer_reference, std430) readonly buffer A {A_TYPE data_a[];};
 #if defined(A_TYPE_PACKED16)
 layout (buffer_reference, std430) readonly buffer A_PACKED16 {A_TYPE_PACKED16 data_a_packed16[];};
 #endif
 layout (buffer_reference, std430) readonly buffer B {B_TYPE data_b[];};
+#ifdef B_TYPE_VEC2
+layout (buffer_reference, std430) readonly buffer BV2 {B_TYPE_VEC2 data_b_v2[];};
+#endif
+#ifdef B_TYPE_VEC4
+layout (buffer_reference, std430) readonly buffer BV4 {B_TYPE_VEC4 data_b_v4[];};
+#endif
 layout (buffer_reference, std430) writeonly buffer D {D_TYPE data_d[];};
 layout (buffer_reference, std430) readonly buffer Fuse0 {D_TYPE data_fuse0[];};
 layout (buffer_reference, std430) readonly buffer Fuse1 {D_TYPE data_fuse1[];};

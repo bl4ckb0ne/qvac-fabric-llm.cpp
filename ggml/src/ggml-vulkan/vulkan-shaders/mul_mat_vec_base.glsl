@@ -42,6 +42,12 @@ layout (push_constant) uniform parameter
     A_PACKED16 data_a_packed16_ptr;
 #endif
     B data_b_ptr;
+#ifdef B_TYPE_VEC2
+    BV2 data_b_v2_ptr;
+#endif
+#ifdef B_TYPE_VEC4
+    BV4 data_b_v4_ptr;
+#endif
     D data_d_ptr;
     Fuse0 data_fuse0_ptr;
     Fuse1 data_fuse1_ptr;
@@ -49,7 +55,6 @@ layout (push_constant) uniform parameter
     IDS data_ids_ptr;
 #endif
 #endif
-
 } p;
 
 #if defined(USE_DEVICE_ADDR)
@@ -58,6 +63,8 @@ layout (push_constant) uniform parameter
 #define data_a_packed16 p.data_a_packed16_ptr.data_a_packed16
 #endif
 #define data_b p.data_b_ptr.data_b
+#define data_b_v2 p.data_b_v2_ptr.data_b_v2
+#define data_b_v4 p.data_b_v4_ptr.data_b_v4
 #define data_d p.data_d_ptr.data_d
 #define data_fuse0 p.data_fuse0_ptr.data_fuse0
 #define data_fuse1 p.data_fuse1_ptr.data_fuse1
