@@ -124,6 +124,7 @@ struct vk_pipeline_struct {
     vk::ShaderModule shader_module;
     vk::PipelineLayout layout;
     vk::Pipeline pipeline;
+    vk::DescriptorUpdateTemplate descriptor_template;
     uint32_t push_constant_size;
     uint32_t parameter_count;
     std::array<uint32_t, 3> wg_denoms;
@@ -1623,6 +1624,24 @@ static void ggml_vk_create_pipeline_func(vk_device& device, vk_pipeline& pipelin
         throw e;
     }
     pipeline->compiled = true;
+
+    std::vector<vk::DescriptorUpdateTemplateEntry> update_entries{};
+    for (uint32_t i = 0; i < pipeline->parameter_count; ++i) {
+        update_entries.emplace_back(i, 0, 1, vk::DescriptorType::eStorageBuffer, i * sizeof(vk::DescriptorBufferInfo), sizeof(vk::DescriptorBufferInfo));
+    }
+
+    vk::DescriptorUpdateTemplateCreateInfo template_create_info(
+        vk::DescriptorUpdateTemplateCreateFlags{},
+        update_entries.size(),
+        update_entries.data(),
+        vk::DescriptorUpdateTemplateType::ePushDescriptors,
+        vk::DescriptorSetLayout{},
+        vk::PipelineBindPoint::eCompute,
+        pipeline->layout,
+        0
+    );
+
+    pipeline->descriptor_template = device->device.createDescriptorUpdateTemplate(template_create_info);
 
     if (vk_instance.debug_utils_support) {
         vk::DebugUtilsObjectNameInfoEXT duoni;
@@ -4144,6 +4163,9 @@ static vk_device ggml_vk_get_device(size_t idx) {
         }
 #endif
 #endif
+
+        device_extensions.push_back("VK_KHR_push_descriptor");
+
         device->name = GGML_VK_NAME + std::to_string(idx);
 
         device_create_info = {
@@ -4218,7 +4240,7 @@ static vk_device ggml_vk_get_device(size_t idx) {
         vk::DescriptorSetLayoutBindingFlagsCreateInfo dslbfci = { dsl_binding_flags };
 
         vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_create_info(
-            {},
+            vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptor,
             dsl_binding);
         descriptor_set_layout_create_info.setPNext(&dslbfci);
         device->dsl = device->device.createDescriptorSetLayout(descriptor_set_layout_create_info);
@@ -5143,6 +5165,7 @@ template <typename T, uint32_t N> const T *push_constant_data(const std::array<T
 
 template <typename T>
 static void ggml_vk_dispatch_pipeline(ggml_backend_vk_context* ctx, vk_context& subctx, vk_pipeline& pipeline, std::initializer_list<vk::DescriptorBufferInfo> const& descriptor_buffer_infos, const T &push_constants, std::array<uint32_t, 3> elements) {
+    (void)ctx;
     const uint32_t wg0 = CEIL_DIV(elements[0], pipeline->wg_denoms[0]);
     const uint32_t wg1 = CEIL_DIV(elements[1], pipeline->wg_denoms[1]);
     const uint32_t wg2 = CEIL_DIV(elements[2], pipeline->wg_denoms[2]);
@@ -5151,21 +5174,12 @@ static void ggml_vk_dispatch_pipeline(ggml_backend_vk_context* ctx, vk_context& 
         std::cerr << "(" << buffer.buffer << ", " << buffer.offset << ", " << buffer.range << "), ";
     }
     std::cerr << "}, (" << wg0 << "," << wg1 << "," << wg2 << "))");
-    GGML_ASSERT(ctx->descriptor_set_idx < ctx->descriptor_sets.size());
     GGML_ASSERT(descriptor_buffer_infos.size() <= MAX_PARAMETER_COUNT);
     GGML_ASSERT(pipeline->parameter_count == descriptor_buffer_infos.size());
 
-    vk::DescriptorSet& descriptor_set = ctx->descriptor_sets[ctx->descriptor_set_idx++];
-    vk::WriteDescriptorSet write_descriptor_set{ descriptor_set, 0, 0, pipeline->parameter_count, vk::DescriptorType::eStorageBuffer, nullptr, descriptor_buffer_infos.begin() };
-    ctx->device->device.updateDescriptorSets({ write_descriptor_set }, {});
-
-    subctx->s->buffer.pushConstants(pipeline->layout, vk::ShaderStageFlagBits::eCompute, 0, push_constant_size(push_constants), push_constant_data(push_constants));
     subctx->s->buffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline->pipeline);
-    subctx->s->buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
-                                pipeline->layout,
-                                0,
-                                { descriptor_set },
-                                {});
+    subctx->s->buffer.pushConstants(pipeline->layout, vk::ShaderStageFlagBits::eCompute, 0, push_constant_size(push_constants), push_constant_data(push_constants));
+    subctx->s->buffer.pushDescriptorSetWithTemplate(pipeline->descriptor_template, pipeline->layout, 0, static_cast<const void *>(descriptor_buffer_infos.begin()));
     subctx->s->buffer.dispatch(wg0, wg1, wg2);
 }
 
