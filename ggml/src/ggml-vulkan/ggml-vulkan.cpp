@@ -1403,9 +1403,9 @@ struct ggml_backend_vk_context {
 
     std::vector<vk_context_ref> tensor_ctxs;
 
-    std::vector<vk::DescriptorPool> descriptor_pools;
-    std::vector<vk::DescriptorSet> descriptor_sets;
-    uint32_t descriptor_set_idx {};
+//    std::vector<vk::DescriptorPool> descriptor_pools;
+//    std::vector<vk::DescriptorSet> descriptor_sets;
+//    uint32_t descriptor_set_idx {};
     uint32_t pipeline_descriptor_set_requirements {};
 
     vk_command_pool compute_cmd_pool;
@@ -1682,6 +1682,7 @@ static void ggml_pipeline_request_descriptor_sets(ggml_backend_vk_context *ctx, 
     }
 }
 
+/*
 static void ggml_pipeline_allocate_descriptor_sets(ggml_backend_vk_context * ctx) {
 
     if (ctx->descriptor_sets.size() >= ctx->pipeline_descriptor_set_requirements) {
@@ -1717,6 +1718,7 @@ static void ggml_pipeline_allocate_descriptor_sets(ggml_backend_vk_context * ctx
         pool_idx++;
     }
 }
+*/
 
 static vk::CommandBuffer ggml_vk_create_cmd_buffer(vk_device& device, vk_command_pool& p) {
     VK_LOG_DEBUG("ggml_vk_create_cmd_buffer()");
@@ -12038,7 +12040,7 @@ static void ggml_vk_graph_cleanup(ggml_backend_vk_context * ctx) {
     ctx->tensor_ctxs.clear();
     ctx->gc.contexts.clear();
     ctx->pipeline_descriptor_set_requirements = 0;
-    ctx->descriptor_set_idx = 0;
+    //ctx->descriptor_set_idx = 0;
 }
 
 // Clean up on backend free
@@ -12068,12 +12070,13 @@ static void ggml_vk_cleanup(ggml_backend_vk_context * ctx) {
     ctx->device->device.destroyFence(ctx->fence);
     ctx->device->device.destroyFence(ctx->almost_ready_fence);
 
+/*
     for (auto& pool : ctx->descriptor_pools) {
         ctx->device->device.destroyDescriptorPool(pool);
     }
     ctx->descriptor_pools.clear();
     ctx->descriptor_sets.clear();
-
+*/
     ctx->compute_cmd_pool.destroy(ctx->device->device);
     ctx->transfer_cmd_pool.destroy(ctx->device->device);
 }
@@ -12565,7 +12568,7 @@ static ggml_status ggml_backend_vk_graph_compute(ggml_backend_t backend, ggml_cg
         ggml_vk_load_shaders(ctx->device);
     }
     ggml_vk_preallocate_buffers(ctx);
-    ggml_pipeline_allocate_descriptor_sets(ctx);
+    //ggml_pipeline_allocate_descriptor_sets(ctx);
 
     int last_node = cgraph->n_nodes - 1;
 
