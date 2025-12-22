@@ -1,6 +1,7 @@
 #version 450
 
 #extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
 #extension GL_EXT_integer_dot_product : require
 
 #define MMQ
@@ -18,7 +19,10 @@ layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
 #error unimplemented
 #endif
 
-uint a_offset, b_offset, d_offset;
+shared uint a_offset, b_offset, d_offset;
+
+shared int32_t shared_b_qs[BLOCK_SIZE * (K_PER_ITER / 4)];
+shared vec2 shared_b_ds[BLOCK_SIZE];
 
 int32_t cache_b_qs[K_PER_ITER / 4];
 vec2 cache_b_ds;
@@ -28,31 +32,61 @@ vec2 cache_b_ds;
 void iter(inout FLOAT_TYPE temp[NUM_COLS][NUM_ROWS], const uint first_row, const uint num_rows, const uint tid, const uint i) {
     [[unroll]] for (uint j = 0; j < NUM_COLS; ++j) {
         const uint col = i*BLOCK_SIZE + tid*K_PER_ITER;
-
-        // Preload data_b block
         const uint b_block_idx = (j*p.batch_stride_b + col) / QUANT_K_Q8_1 + b_offset;
         const uint b_qs_idx = tid % (32 / K_PER_ITER);
-        const uint b_block_idx_outer = b_block_idx / 4;
-        const uint b_block_idx_inner = b_block_idx % 4;
-        cache_b_ds = vec2(data_b[b_block_idx_outer].ds[b_block_idx_inner]);
 
+        // Cooperative preload data_b block
+        if (tid < gl_WorkGroupSize.x) {
+            const uint b_block_idx_outer = b_block_idx / 4;
+            const uint b_block_idx_inner = b_block_idx % 4;
+
+            const B_TYPE b_block = data_b[b_block_idx_outer];
+            shared_b_ds[tid] = vec2(b_block.ds[b_block_idx_inner]);
+
+            const uint idx = tid * (K_PER_ITER / 4);
 #if QUANT_R == 2
-        // Assumes K_PER_ITER == 8
-        cache_b_qs[0] = data_b[b_block_idx_outer].qs[b_block_idx_inner * 8 + b_qs_idx];
-        cache_b_qs[1] = data_b[b_block_idx_outer].qs[b_block_idx_inner * 8 + b_qs_idx + 4];
+            const uint b_idx = b_block_idx_inner * 8 + b_qs_idx;
+
+            // Assumes K_PER_ITER == 8
+            shared_b_qs[idx    ] = b_block.qs[b_idx];
+            shared_b_qs[idx + 1] = b_block.qs[b_idx + 4];
 #else
+            const uint b_idx = b_block_idx_inner * 8 + b_qs_idx * (K_PER_ITER / 4);
 #if K_PER_ITER == 8
-        cache_b_qs[0] = data_b[b_block_idx_outer].qs[b_block_idx_inner * 8 + b_qs_idx * 2];
-        cache_b_qs[1] = data_b[b_block_idx_outer].qs[b_block_idx_inner * 8 + b_qs_idx * 2 + 1];
+            shared_b_qs[idx    ] = b_block.qs[b_idx];
+            shared_b_qs[idx + 1] = b_block.qs[b_idx + 1];
 #elif K_PER_ITER == 16
-        cache_b_qs[0] = data_b[b_block_idx_outer].qs[b_block_idx_inner * 8 + b_qs_idx * 4    ];
-        cache_b_qs[1] = data_b[b_block_idx_outer].qs[b_block_idx_inner * 8 + b_qs_idx * 4 + 1];
-        cache_b_qs[2] = data_b[b_block_idx_outer].qs[b_block_idx_inner * 8 + b_qs_idx * 4 + 2];
-        cache_b_qs[3] = data_b[b_block_idx_outer].qs[b_block_idx_inner * 8 + b_qs_idx * 4 + 3];
+            shared_b_qs[idx    ] = b_block.qs[b_idx];
+            shared_b_qs[idx + 1] = b_block.qs[b_idx + 1];
+            shared_b_qs[idx + 2] = b_block.qs[b_idx + 2];
+            shared_b_qs[idx + 3] = b_block.qs[b_idx + 3];
 #else
 #error unimplemented
 #endif
 #endif
+        }
+
+        barrier();
+
+        const uint idx = (tid % 32) * (K_PER_ITER / 4);
+#if QUANT_R == 2
+        cache_b_qs[0] = shared_b_qs[idx],
+        cache_b_qs[1] = shared_b_qs[idx + 1],
+#else
+#if K_PER_ITER == 8
+        cache_b_qs[0] = shared_b_qs[idx],
+        cache_b_qs[1] = shared_b_qs[idx + 1],
+#elif K_PER_ITER == 16
+        cache_b_qs[0] = shared_b_qs[idx],
+        cache_b_qs[1] = shared_b_qs[idx + 1],
+        cache_b_qs[2] = shared_b_qs[idx + 2],
+        cache_b_qs[3] = shared_b_qs[idx + 3],
+#else
+#error unimplemented
+#endif
+#endif
+
+        cache_b_ds = shared_b_ds[tid % 32];
 
         uint ibi = first_row*p.ncols;
         [[unroll]] for (uint n = 0; n < num_rows; ++n) {
@@ -120,13 +154,13 @@ void main() {
     init_iq_shmem(gl_WorkGroupSize);
 #endif
 
-    // do NUM_ROWS at a time, unless there aren't enough remaining rows
-    if (first_row + NUM_ROWS <= p.stride_d) {
-        compute_outputs(first_row, NUM_ROWS);
-    } else {
-        if (first_row >= p.stride_d) {
-            return;
-        }
-        compute_outputs(first_row, p.stride_d - first_row);
+    if (first_row >= p.stride_d) {
+        return;
     }
+
+    // do NUM_ROWS at a time, unless there aren't enough remaining rows
+    const uint remaining_rows = p.stride_d - first_row;
+    const uint num_rows = min(NUM_ROWS, remaining_rows);
+
+    compute_outputs(first_row, num_rows);
 }
